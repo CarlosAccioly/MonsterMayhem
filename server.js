@@ -13,7 +13,6 @@ app.use(express.static("public"));
 io.on("connection", (socket) => {
     console.log("A player connected: " + socket.id);
 
-    // Send the player's socket ID to the browser
     socket.emit("playerConnected", socket.id);
 
     socket.on("disconnect", () => {

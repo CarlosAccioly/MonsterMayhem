@@ -17,7 +17,7 @@ const messageText = document.getElementById("messageText");
 let selectedMonster = null;
 
 // This stores the board state
-// Each empty cell is null
+// Empty cells are stored as null
 let board = new Array(100).fill(null);
 
 // This controls how many monsters are still available to place
@@ -75,17 +75,17 @@ function createBoard() {
 
 // Decide what happens when a board cell is clicked
 function handleCellClick(index) {
-    // If the cell has a monster, select it for movement
-    if (board[index] !== null) {
+    // If the cell has a monster and no monster is already selected, select it
+    if (board[index] !== null && selectedMoveIndex === null) {
         selectedMoveIndex = index;
         selectedMoveText.textContent = "Selected monster to move: " + getMonsterName(board[index]);
-        messageText.textContent = "Now click an empty cell up, down, left, or right.";
+        messageText.textContent = "Now click a nearby cell to move or battle.";
         updateBoard();
         return;
     }
 
-    // If an empty cell is clicked and a monster is selected to move, try to move it
-    if (board[index] === null && selectedMoveIndex !== null) {
+    // If a monster is selected, try to move or battle
+    if (selectedMoveIndex !== null) {
         moveMonster(selectedMoveIndex, index);
         return;
     }
@@ -125,10 +125,10 @@ function placeMonster(index) {
     updateBoard();
 }
 
-// Move a selected monster to an empty cell
+// Move a selected monster to another cell
 function moveMonster(fromIndex, toIndex) {
-    if (board[toIndex] !== null) {
-        messageText.textContent = "Invalid move: that cell is already occupied.";
+    if (fromIndex === toIndex) {
+        messageText.textContent = "Invalid move: choose a different cell.";
         return;
     }
 
@@ -137,12 +137,22 @@ function moveMonster(fromIndex, toIndex) {
         return;
     }
 
-    board[toIndex] = board[fromIndex];
-    board[fromIndex] = null;
+    const movingMonster = board[fromIndex];
+    const targetMonster = board[toIndex];
+
+    // If the target cell is empty, move normally
+    if (targetMonster === null) {
+        board[toIndex] = movingMonster;
+        board[fromIndex] = null;
+
+        messageText.textContent = "Monster moved successfully.";
+    } else {
+        // If the target cell has a monster, battle happens
+        handleBattle(fromIndex, toIndex, movingMonster, targetMonster);
+    }
 
     selectedMoveIndex = null;
     selectedMoveText.textContent = "Selected monster to move: None";
-    messageText.textContent = "Monster moved successfully.";
 
     updateBoard();
 }
@@ -158,7 +168,6 @@ function isValidMove(fromIndex, toIndex) {
     const rowDifference = Math.abs(fromRow - toRow);
     const colDifference = Math.abs(fromCol - toCol);
 
-    // Valid movement is exactly one cell vertically OR exactly one cell horizontally
     if (rowDifference === 1 && colDifference === 0) {
         return true;
     }
@@ -168,6 +177,69 @@ function isValidMove(fromIndex, toIndex) {
     }
 
     return false;
+}
+
+// This function handles monster battle rules
+function handleBattle(fromIndex, toIndex, movingMonster, targetMonster) {
+    // Same monster type: both are removed
+    if (movingMonster === targetMonster) {
+        board[fromIndex] = null;
+        board[toIndex] = null;
+
+        messageText.textContent = "Battle result: both " + getMonsterName(movingMonster) + " monsters were removed.";
+        return;
+    }
+
+    // Vampire beats Werewolf
+    if (movingMonster === "V" && targetMonster === "W") {
+        board[fromIndex] = null;
+        board[toIndex] = "V";
+
+        messageText.textContent = "Battle result: Vampire defeated Werewolf.";
+        return;
+    }
+
+    if (movingMonster === "W" && targetMonster === "V") {
+        board[fromIndex] = null;
+        board[toIndex] = "V";
+
+        messageText.textContent = "Battle result: Vampire defeated Werewolf.";
+        return;
+    }
+
+    // Werewolf beats Ghost
+    if (movingMonster === "W" && targetMonster === "G") {
+        board[fromIndex] = null;
+        board[toIndex] = "W";
+
+        messageText.textContent = "Battle result: Werewolf defeated Ghost.";
+        return;
+    }
+
+    if (movingMonster === "G" && targetMonster === "W") {
+        board[fromIndex] = null;
+        board[toIndex] = "W";
+
+        messageText.textContent = "Battle result: Werewolf defeated Ghost.";
+        return;
+    }
+
+    // Ghost beats Vampire
+    if (movingMonster === "G" && targetMonster === "V") {
+        board[fromIndex] = null;
+        board[toIndex] = "G";
+
+        messageText.textContent = "Battle result: Ghost defeated Vampire.";
+        return;
+    }
+
+    if (movingMonster === "V" && targetMonster === "G") {
+        board[fromIndex] = null;
+        board[toIndex] = "G";
+
+        messageText.textContent = "Battle result: Ghost defeated Vampire.";
+        return;
+    }
 }
 
 // Update the board display
