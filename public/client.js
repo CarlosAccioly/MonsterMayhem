@@ -4,6 +4,9 @@ const connectionMessage = document.getElementById("connectionMessage");
 const socketIdText = document.getElementById("socketId");
 const gameBoard = document.getElementById("gameBoard");
 
+const playerInfoText = document.getElementById("playerInfoText");
+const playerEdgeText = document.getElementById("playerEdgeText");
+
 const vampireButton = document.getElementById("vampireButton");
 const werewolfButton = document.getElementById("werewolfButton");
 const ghostButton = document.getElementById("ghostButton");
@@ -17,23 +20,34 @@ let selectedMonster = null;
 let selectedMoveIndex = null;
 let board = new Array(100).fill(null);
 
-socket.on("playerConnected", (socketId) => {
+let playerNumber = null;
+let playerEdge = null;
+
+socket.on("playerConnected", (data) => {
     connectionMessage.textContent = "Player connected successfully!";
-    socketIdText.textContent = socketId;
+    socketIdText.textContent = data.socketId;
+
+    playerNumber = data.playerNumber;
+    playerEdge = data.edge;
+
+    playerInfoText.textContent = "Player: " + playerNumber;
+    playerEdgeText.textContent = "Your edge: " + playerEdge;
+
+    updateBoard();
 });
 
 socket.on("boardUpdate", (data) => {
     board = data.board;
     messageText.textContent = data.message;
 
-    if (data.remainingMonsters) {
-        updateRemainingMonsters(data.remainingMonsters);
-    }
-
     selectedMoveIndex = null;
     selectedMoveText.textContent = "Selected monster to move: None";
 
     updateBoard();
+});
+
+socket.on("remainingMonstersUpdate", (remainingMonsters) => {
+    updateRemainingMonsters(remainingMonsters);
 });
 
 socket.on("message", (message) => {
@@ -106,6 +120,11 @@ function updateBoard() {
     cells.forEach((cell, index) => {
         cell.textContent = "";
         cell.classList.remove("selected-cell");
+        cell.classList.remove("player-edge");
+
+        if (isMyEdge(index)) {
+            cell.classList.add("player-edge");
+        }
 
         if (board[index] !== null) {
             cell.textContent = board[index];
@@ -115,6 +134,18 @@ function updateBoard() {
             cell.classList.add("selected-cell");
         }
     });
+}
+
+function isMyEdge(index) {
+    const row = Math.floor(index / 10);
+    const col = index % 10;
+
+    if (playerNumber === 1 && row === 0) return true;
+    if (playerNumber === 2 && row === 9) return true;
+    if (playerNumber === 3 && col === 0) return true;
+    if (playerNumber === 4 && col === 9) return true;
+
+    return false;
 }
 
 function updateRemainingMonsters(remainingMonsters) {

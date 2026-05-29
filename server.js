@@ -6,19 +6,29 @@ const io = require("socket.io")(http);
 
 const PORT = 3000;
 
-// Serve the public folder
 app.use(express.static("public"));
 
-// The board is now stored on the server
-// This means all players share the same board
 let board = new Array(100).fill(null);
 
-// Each player gets their own remaining monsters
+let players = {};
 let playerMonsters = {};
+let nextPlayerNumber = 1;
 
-// Socket.IO connection
 io.on("connection", (socket) => {
     console.log("A player connected: " + socket.id);
+
+    if (nextPlayerNumber > 4) {
+        socket.emit("message", "Game is full. Maximum 4 players allowed.");
+        return;
+    }
+
+    const playerNumber = nextPlayerNumber;
+    nextPlayerNumber++;
+
+    players[socket.id] = {
+        playerNumber: playerNumber,
+        edge: getPlayerEdge(playerNumber)
+    };
 
     playerMonsters[socket.id] = {
         vampire: 1,
@@ -26,17 +36,26 @@ io.on("connection", (socket) => {
         ghost: 1
     };
 
-    socket.emit("playerConnected", socket.id);
+    socket.emit("playerConnected", {
+        socketId: socket.id,
+        playerNumber: playerNumber,
+        edge: players[socket.id].edge
+    });
 
     socket.emit("boardUpdate", {
         board: board,
-        message: "Connected to the game.",
+        message: "Connected as Player " + playerNumber + ".",
         remainingMonsters: playerMonsters[socket.id]
     });
 
     socket.on("placeMonster", (data) => {
         const index = data.index;
         const monster = data.monster;
+
+        if (!isPlayerEdge(index, players[socket.id].playerNumber)) {
+            socket.emit("message", "Invalid placement: you can only place monsters on your own edge.");
+            return;
+        }
 
         if (board[index] !== null) {
             socket.emit("message", "This cell already has a monster.");
@@ -53,9 +72,10 @@ io.on("connection", (socket) => {
 
         io.emit("boardUpdate", {
             board: board,
-            message: getMonsterName(board[index]) + " placed successfully.",
-            remainingMonsters: playerMonsters[socket.id]
+            message: "Player " + playerNumber + " placed a " + getMonsterName(board[index]) + "."
         });
+
+        socket.emit("remainingMonstersUpdate", playerMonsters[socket.id]);
     });
 
     socket.on("moveMonster", (data) => {
@@ -81,25 +101,43 @@ io.on("connection", (socket) => {
 
             io.emit("boardUpdate", {
                 board: board,
-                message: "Monster moved successfully.",
-                remainingMonsters: playerMonsters[socket.id]
+                message: "Player " + playerNumber + " moved a monster."
             });
         } else {
-            handleBattle(fromIndex, toIndex, movingMonster, targetMonster);
+            const battleMessage = handleBattle(fromIndex, toIndex, movingMonster, targetMonster);
 
             io.emit("boardUpdate", {
                 board: board,
-                message: "Battle completed.",
-                remainingMonsters: playerMonsters[socket.id]
+                message: battleMessage
             });
         }
     });
 
     socket.on("disconnect", () => {
         console.log("A player disconnected: " + socket.id);
+        delete players[socket.id];
         delete playerMonsters[socket.id];
     });
 });
+
+function getPlayerEdge(playerNumber) {
+    if (playerNumber === 1) return "Top edge";
+    if (playerNumber === 2) return "Bottom edge";
+    if (playerNumber === 3) return "Left edge";
+    if (playerNumber === 4) return "Right edge";
+}
+
+function isPlayerEdge(index, playerNumber) {
+    const row = Math.floor(index / 10);
+    const col = index % 10;
+
+    if (playerNumber === 1 && row === 0) return true;
+    if (playerNumber === 2 && row === 9) return true;
+    if (playerNumber === 3 && col === 0) return true;
+    if (playerNumber === 4 && col === 9) return true;
+
+    return false;
+}
 
 function isValidMove(fromIndex, toIndex) {
     const fromRow = Math.floor(fromIndex / 10);
@@ -121,7 +159,7 @@ function handleBattle(fromIndex, toIndex, movingMonster, targetMonster) {
     if (movingMonster === targetMonster) {
         board[fromIndex] = null;
         board[toIndex] = null;
-        return;
+        return "Battle result: both monsters were removed.";
     }
 
     if (
@@ -131,9 +169,11 @@ function handleBattle(fromIndex, toIndex, movingMonster, targetMonster) {
     ) {
         board[toIndex] = movingMonster;
         board[fromIndex] = null;
-    } else {
-        board[fromIndex] = null;
+        return "Battle result: " + getMonsterName(movingMonster) + " defeated " + getMonsterName(targetMonster) + ".";
     }
+
+    board[fromIndex] = null;
+    return "Battle result: " + getMonsterName(targetMonster) + " defeated " + getMonsterName(movingMonster) + ".";
 }
 
 function getMonsterLetter(monster) {

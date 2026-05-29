@@ -26,6 +26,12 @@ h1 {
     font-weight: bold;
 }
 
+#playerInfoText,
+#playerEdgeText {
+    color: #00ff99;
+    font-weight: bold;
+}
+
 .monster-buttons {
     margin: 15px 0;
 }
@@ -80,4 +86,9 @@ h1 {
 .selected-cell {
     background-color: #ffcc00;
     color: #222;
+}
+
+.player-edge {
+    background-color: #444b70;
+    border: 2px solid #00ff99;
 }
