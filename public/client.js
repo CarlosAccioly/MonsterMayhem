@@ -4,27 +4,68 @@ const connectionMessage = document.getElementById("connectionMessage");
 const socketIdText = document.getElementById("socketId");
 const gameBoard = document.getElementById("gameBoard");
 
+const vampireButton = document.getElementById("vampireButton");
+const werewolfButton = document.getElementById("werewolfButton");
+const ghostButton = document.getElementById("ghostButton");
+const selectedMonsterText = document.getElementById("selectedMonsterText");
+
+let selectedMonster = null;
+
 socket.on("playerConnected", (socketId) => {
     connectionMessage.textContent = "Player connected successfully!";
     socketIdText.textContent = socketId;
 });
 
-// This function creates a simple 10x10 game board
+vampireButton.addEventListener("click", () => {
+    selectedMonster = "vampire";
+    selectedMonsterText.textContent = "Selected monster: Vampire";
+});
+
+werewolfButton.addEventListener("click", () => {
+    selectedMonster = "werewolf";
+    selectedMonsterText.textContent = "Selected monster: Werewolf";
+});
+
+ghostButton.addEventListener("click", () => {
+    selectedMonster = "ghost";
+    selectedMonsterText.textContent = "Selected monster: Ghost";
+});
+
 function createBoard() {
-    // Clear the board before creating it
     gameBoard.innerHTML = "";
 
-    // A 10x10 board has 100 cells
     for (let i = 0; i < 100; i++) {
         const cell = document.createElement("div");
 
-        // Add the CSS class to style the cell
         cell.classList.add("cell");
+        cell.dataset.index = i;
 
-        // Add the cell to the board
+        cell.addEventListener("click", () => {
+            placeMonster(cell);
+        });
+
         gameBoard.appendChild(cell);
     }
 }
 
-// Create the board when the page loads
+function placeMonster(cell) {
+    if (selectedMonster === null) {
+        alert("Please choose a monster first.");
+        return;
+    }
+
+    if (cell.textContent !== "") {
+        alert("This cell already has a monster.");
+        return;
+    }
+
+    if (selectedMonster === "vampire") {
+        cell.textContent = "V";
+    } else if (selectedMonster === "werewolf") {
+        cell.textContent = "W";
+    } else if (selectedMonster === "ghost") {
+        cell.textContent = "G";
+    }
+}
+
 createBoard();

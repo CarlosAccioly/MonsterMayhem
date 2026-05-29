@@ -12,7 +12,7 @@ body {
     background-color: #333;
     padding: 30px;
     border-radius: 10px;
-    width: 600px;
+    width: 650px;
     margin-left: auto;
     margin-right: auto;
 }
@@ -23,6 +23,24 @@ h1 {
 
 #socketId {
     color: #00ff99;
+    font-weight: bold;
+}
+
+.monster-buttons {
+    margin: 15px 0;
+}
+
+.monster-buttons button {
+    padding: 10px 15px;
+    margin: 5px;
+    cursor: pointer;
+    border: none;
+    border-radius: 5px;
+    font-weight: bold;
+}
+
+#selectedMonsterText {
+    color: #ffcc00;
     font-weight: bold;
 }
 
@@ -40,4 +58,13 @@ h1 {
     height: 40px;
     background-color: #555;
     border: 1px solid #777;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 22px;
+}
+
+.cell:hover {
+    background-color: #666;
 }
