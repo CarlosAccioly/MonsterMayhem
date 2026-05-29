@@ -46,6 +46,11 @@ h1 {
     font-weight: bold;
 }
 
+#messageText {
+    color: #00ff99;
+    font-weight: bold;
+}
+
 #gameBoard {
     display: grid;
     grid-template-columns: repeat(10, 40px);

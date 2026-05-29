@@ -11,6 +11,7 @@ const ghostButton = document.getElementById("ghostButton");
 const selectedMonsterText = document.getElementById("selectedMonsterText");
 const remainingMonstersText = document.getElementById("remainingMonstersText");
 const selectedMoveText = document.getElementById("selectedMoveText");
+const messageText = document.getElementById("messageText");
 
 // This stores the monster selected for placement
 let selectedMonster = null;
@@ -37,16 +38,19 @@ socket.on("playerConnected", (socketId) => {
 vampireButton.addEventListener("click", () => {
     selectedMonster = "vampire";
     selectedMonsterText.textContent = "Selected monster to place: Vampire";
+    messageText.textContent = "Click an empty cell to place the Vampire.";
 });
 
 werewolfButton.addEventListener("click", () => {
     selectedMonster = "werewolf";
     selectedMonsterText.textContent = "Selected monster to place: Werewolf";
+    messageText.textContent = "Click an empty cell to place the Werewolf.";
 });
 
 ghostButton.addEventListener("click", () => {
     selectedMonster = "ghost";
     selectedMonsterText.textContent = "Selected monster to place: Ghost";
+    messageText.textContent = "Click an empty cell to place the Ghost.";
 });
 
 // Create the 10x10 board
@@ -75,11 +79,12 @@ function handleCellClick(index) {
     if (board[index] !== null) {
         selectedMoveIndex = index;
         selectedMoveText.textContent = "Selected monster to move: " + getMonsterName(board[index]);
+        messageText.textContent = "Now click an empty cell up, down, left, or right.";
         updateBoard();
         return;
     }
 
-    // If an empty cell is clicked and a monster is selected to move, move it
+    // If an empty cell is clicked and a monster is selected to move, try to move it
     if (board[index] === null && selectedMoveIndex !== null) {
         moveMonster(selectedMoveIndex, index);
         return;
@@ -91,28 +96,30 @@ function handleCellClick(index) {
         return;
     }
 
-    alert("Please choose a monster to place or select a monster to move.");
+    messageText.textContent = "Please choose a monster to place or select a monster to move.";
 }
 
 // Place a monster on an empty cell
 function placeMonster(index) {
     if (selectedMonster === null) {
-        alert("Please choose a monster first.");
+        messageText.textContent = "Please choose a monster first.";
         return;
     }
 
     if (board[index] !== null) {
-        alert("This cell already has a monster.");
+        messageText.textContent = "This cell already has a monster.";
         return;
     }
 
     if (remainingMonsters[selectedMonster] <= 0) {
-        alert("You have already placed this monster type.");
+        messageText.textContent = "You have already placed this monster type.";
         return;
     }
 
     board[index] = getMonsterLetter(selectedMonster);
     remainingMonsters[selectedMonster]--;
+
+    messageText.textContent = getMonsterName(board[index]) + " placed successfully.";
 
     updateRemainingMonsters();
     updateBoard();
@@ -121,7 +128,12 @@ function placeMonster(index) {
 // Move a selected monster to an empty cell
 function moveMonster(fromIndex, toIndex) {
     if (board[toIndex] !== null) {
-        alert("You cannot move to an occupied cell.");
+        messageText.textContent = "Invalid move: that cell is already occupied.";
+        return;
+    }
+
+    if (isValidMove(fromIndex, toIndex) === false) {
+        messageText.textContent = "Invalid move: monsters can only move one cell up, down, left, or right.";
         return;
     }
 
@@ -130,8 +142,32 @@ function moveMonster(fromIndex, toIndex) {
 
     selectedMoveIndex = null;
     selectedMoveText.textContent = "Selected monster to move: None";
+    messageText.textContent = "Monster moved successfully.";
 
     updateBoard();
+}
+
+// Check if the monster is moving only one cell up, down, left, or right
+function isValidMove(fromIndex, toIndex) {
+    const fromRow = Math.floor(fromIndex / 10);
+    const fromCol = fromIndex % 10;
+
+    const toRow = Math.floor(toIndex / 10);
+    const toCol = toIndex % 10;
+
+    const rowDifference = Math.abs(fromRow - toRow);
+    const colDifference = Math.abs(fromCol - toCol);
+
+    // Valid movement is exactly one cell vertically OR exactly one cell horizontally
+    if (rowDifference === 1 && colDifference === 0) {
+        return true;
+    }
+
+    if (rowDifference === 0 && colDifference === 1) {
+        return true;
+    }
+
+    return false;
 }
 
 // Update the board display
