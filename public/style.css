@@ -1,4 +1,3 @@
-/* Basic page styling */
 body {
     font-family: Arial, sans-serif;
     background-color: #222;
@@ -8,24 +7,37 @@ body {
     padding: 0;
 }
 
-/* Main content box */
 .container {
-    margin-top: 100px;
+    margin-top: 30px;
     background-color: #333;
     padding: 30px;
     border-radius: 10px;
-    width: 400px;
+    width: 600px;
     margin-left: auto;
     margin-right: auto;
 }
 
-/* Game title */
 h1 {
     color: #ffcc00;
 }
 
-/* Socket ID styling */
 #socketId {
     color: #00ff99;
     font-weight: bold;
+}
+
+#gameBoard {
+    display: grid;
+    grid-template-columns: repeat(10, 40px);
+    grid-template-rows: repeat(10, 40px);
+    gap: 2px;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+.cell {
+    width: 40px;
+    height: 40px;
+    background-color: #555;
+    border: 1px solid #777;
 }
