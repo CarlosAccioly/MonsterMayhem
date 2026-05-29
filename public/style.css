@@ -27,7 +27,10 @@ h1 {
 }
 
 #playerInfoText,
-#playerEdgeText {
+#playerEdgeText,
+#roundText,
+#turnStatusText,
+#endedPlayersText {
     color: #00ff99;
     font-weight: bold;
 }
@@ -36,13 +39,25 @@ h1 {
     margin: 15px 0;
 }
 
-.monster-buttons button {
+.monster-buttons button,
+#endTurnButton {
     padding: 10px 15px;
     margin: 5px;
     cursor: pointer;
     border: none;
     border-radius: 5px;
     font-weight: bold;
+}
+
+#endTurnButton {
+    background-color: #ffcc00;
+    color: #222;
+}
+
+#endTurnButton:disabled {
+    background-color: #777;
+    color: #ccc;
+    cursor: not-allowed;
 }
 
 #selectedMonsterText,

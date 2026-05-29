@@ -7,6 +7,11 @@ const gameBoard = document.getElementById("gameBoard");
 const playerInfoText = document.getElementById("playerInfoText");
 const playerEdgeText = document.getElementById("playerEdgeText");
 
+const roundText = document.getElementById("roundText");
+const turnStatusText = document.getElementById("turnStatusText");
+const endedPlayersText = document.getElementById("endedPlayersText");
+const endTurnButton = document.getElementById("endTurnButton");
+
 const vampireButton = document.getElementById("vampireButton");
 const werewolfButton = document.getElementById("werewolfButton");
 const ghostButton = document.getElementById("ghostButton");
@@ -22,6 +27,7 @@ let board = new Array(100).fill(null);
 
 let playerNumber = null;
 let playerEdge = null;
+let hasEndedTurn = false;
 
 socket.on("playerConnected", (data) => {
     connectionMessage.textContent = "Player connected successfully!";
@@ -44,6 +50,23 @@ socket.on("boardUpdate", (data) => {
     selectedMoveText.textContent = "Selected monster to move: None";
 
     updateBoard();
+});
+
+socket.on("roundUpdate", (data) => {
+    hasEndedTurn = data.hasEndedTurn;
+
+    roundText.textContent = "Round: " + data.roundNumber;
+
+    if (hasEndedTurn) {
+        turnStatusText.textContent = "Your turn status: Ended";
+        endTurnButton.disabled = true;
+    } else {
+        turnStatusText.textContent = "Your turn status: Not ended";
+        endTurnButton.disabled = false;
+    }
+
+    endedPlayersText.textContent =
+        "Players ended turn: " + data.endedCount + " / " + data.totalPlayers;
 });
 
 socket.on("remainingMonstersUpdate", (remainingMonsters) => {
@@ -69,6 +92,10 @@ ghostButton.addEventListener("click", () => {
     selectedMonsterText.textContent = "Selected monster to place: Ghost";
 });
 
+endTurnButton.addEventListener("click", () => {
+    socket.emit("endTurn");
+});
+
 function createBoard() {
     gameBoard.innerHTML = "";
 
@@ -88,6 +115,11 @@ function createBoard() {
 }
 
 function handleCellClick(index) {
+    if (hasEndedTurn) {
+        messageText.textContent = "You already ended your turn. Wait for the next round.";
+        return;
+    }
+
     if (board[index] !== null && selectedMoveIndex === null) {
         selectedMoveIndex = index;
         selectedMoveText.textContent = "Selected monster to move: " + getMonsterName(board[index]);

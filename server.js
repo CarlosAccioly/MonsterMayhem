@@ -14,6 +14,9 @@ let players = {};
 let playerMonsters = {};
 let nextPlayerNumber = 1;
 
+// Round system
+let roundNumber = 1;
+
 io.on("connection", (socket) => {
     console.log("A player connected: " + socket.id);
 
@@ -27,7 +30,8 @@ io.on("connection", (socket) => {
 
     players[socket.id] = {
         playerNumber: playerNumber,
-        edge: getPlayerEdge(playerNumber)
+        edge: getPlayerEdge(playerNumber),
+        turnEnded: false
     };
 
     playerMonsters[socket.id] = {
@@ -44,13 +48,21 @@ io.on("connection", (socket) => {
 
     socket.emit("boardUpdate", {
         board: board,
-        message: "Connected as Player " + playerNumber + ".",
-        remainingMonsters: playerMonsters[socket.id]
+        message: "Connected as Player " + playerNumber + "."
     });
+
+    socket.emit("remainingMonstersUpdate", playerMonsters[socket.id]);
+
+    sendRoundUpdate();
 
     socket.on("placeMonster", (data) => {
         const index = data.index;
         const monster = data.monster;
+
+        if (players[socket.id].turnEnded) {
+            socket.emit("message", "You already ended your turn.");
+            return;
+        }
 
         if (!isPlayerEdge(index, players[socket.id].playerNumber)) {
             socket.emit("message", "Invalid placement: you can only place monsters on your own edge.");
@@ -81,6 +93,11 @@ io.on("connection", (socket) => {
     socket.on("moveMonster", (data) => {
         const fromIndex = data.fromIndex;
         const toIndex = data.toIndex;
+
+        if (players[socket.id].turnEnded) {
+            socket.emit("message", "You already ended your turn.");
+            return;
+        }
 
         if (isValidMove(fromIndex, toIndex) === false) {
             socket.emit("message", "Invalid move: monsters can only move one cell up, down, left, or right.");
@@ -113,12 +130,70 @@ io.on("connection", (socket) => {
         }
     });
 
+    socket.on("endTurn", () => {
+        players[socket.id].turnEnded = true;
+
+        io.emit("message", "Player " + playerNumber + " ended their turn.");
+
+        checkRoundEnd();
+        sendRoundUpdate();
+    });
+
     socket.on("disconnect", () => {
         console.log("A player disconnected: " + socket.id);
+
         delete players[socket.id];
         delete playerMonsters[socket.id];
+
+        checkRoundEnd();
+        sendRoundUpdate();
     });
 });
+
+function checkRoundEnd() {
+    const activePlayers = Object.keys(players);
+
+    if (activePlayers.length === 0) {
+        return;
+    }
+
+    const allPlayersEnded = activePlayers.every((socketId) => {
+        return players[socketId].turnEnded === true;
+    });
+
+    if (allPlayersEnded) {
+        roundNumber++;
+
+        activePlayers.forEach((socketId) => {
+            players[socketId].turnEnded = false;
+        });
+
+        io.emit("boardUpdate", {
+            board: board,
+            message: "Round " + roundNumber + " has started."
+        });
+    }
+}
+
+function sendRoundUpdate() {
+    const activePlayers = Object.keys(players);
+    let endedCount = 0;
+
+    activePlayers.forEach((socketId) => {
+        if (players[socketId].turnEnded) {
+            endedCount++;
+        }
+    });
+
+    activePlayers.forEach((socketId) => {
+        io.to(socketId).emit("roundUpdate", {
+            roundNumber: roundNumber,
+            hasEndedTurn: players[socketId].turnEnded,
+            endedCount: endedCount,
+            totalPlayers: activePlayers.length
+        });
+    });
+}
 
 function getPlayerEdge(playerNumber) {
     if (playerNumber === 1) return "Top edge";
