@@ -39,7 +39,9 @@ h1 {
     font-weight: bold;
 }
 
-#selectedMonsterText {
+#selectedMonsterText,
+#remainingMonstersText,
+#selectedMoveText {
     color: #ffcc00;
     font-weight: bold;
 }
@@ -63,8 +65,14 @@ h1 {
     justify-content: center;
     cursor: pointer;
     font-size: 22px;
+    font-weight: bold;
 }
 
 .cell:hover {
     background-color: #666;
+}
+
+.selected-cell {
+    background-color: #ffcc00;
+    color: #222;
 }

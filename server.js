@@ -6,11 +6,14 @@ const io = require("socket.io")(http);
 
 const PORT = 3000;
 
+// Serve the public folder
 app.use(express.static("public"));
 
+// Socket.IO connection
 io.on("connection", (socket) => {
     console.log("A player connected: " + socket.id);
 
+    // Send the player's socket ID to the browser
     socket.emit("playerConnected", socket.id);
 
     socket.on("disconnect", () => {
@@ -18,6 +21,7 @@ io.on("connection", (socket) => {
     });
 });
 
+// Start the server
 http.listen(PORT, () => {
     console.log("Monster Mayhem server running on port " + PORT);
 });
