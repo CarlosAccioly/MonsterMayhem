@@ -12,6 +12,9 @@ const turnStatusText = document.getElementById("turnStatusText");
 const endedPlayersText = document.getElementById("endedPlayersText");
 const endTurnButton = document.getElementById("endTurnButton");
 
+const playersStatusBox = document.getElementById("playersStatusBox");
+const winnerText = document.getElementById("winnerText");
+
 const vampireButton = document.getElementById("vampireButton");
 const werewolfButton = document.getElementById("werewolfButton");
 const ghostButton = document.getElementById("ghostButton");
@@ -48,6 +51,15 @@ socket.on("boardUpdate", (data) => {
 
     selectedMoveIndex = null;
     selectedMoveText.textContent = "Selected monster to move: None";
+
+    if (data.players) {
+        updatePlayersStatus(data.players);
+    }
+
+    if (data.winner !== null) {
+        winnerText.textContent = "Game Over! Winner: Player " + data.winner;
+        endTurnButton.disabled = true;
+    }
 
     updateBoard();
 });
@@ -165,6 +177,32 @@ function updateBoard() {
         if (index === selectedMoveIndex) {
             cell.classList.add("selected-cell");
         }
+    });
+}
+
+function updatePlayersStatus(players) {
+    playersStatusBox.innerHTML = "";
+
+    players.forEach((player) => {
+        const playerLine = document.createElement("p");
+
+        playerLine.classList.add("player-status");
+
+        if (player.eliminated) {
+            playerLine.classList.add("eliminated-player");
+            playerLine.textContent =
+                "Player " + player.playerNumber +
+                " | Removed monsters: " + player.removedCount +
+                " | Status: Eliminated";
+        } else {
+            playerLine.classList.add("active-player");
+            playerLine.textContent =
+                "Player " + player.playerNumber +
+                " | Removed monsters: " + player.removedCount +
+                " | Status: Active";
+        }
+
+        playersStatusBox.appendChild(playerLine);
     });
 }
 

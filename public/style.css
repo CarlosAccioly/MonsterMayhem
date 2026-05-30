@@ -72,6 +72,30 @@ h1 {
     font-weight: bold;
 }
 
+#winnerText {
+    color: #ffcc00;
+}
+
+#playersStatusBox {
+    background-color: #222;
+    border: 1px solid #777;
+    padding: 10px;
+    border-radius: 5px;
+}
+
+.player-status {
+    margin: 5px;
+    font-weight: bold;
+}
+
+.active-player {
+    color: #00ff99;
+}
+
+.eliminated-player {
+    color: #ff6666;
+}
+
 #gameBoard {
     display: grid;
     grid-template-columns: repeat(10, 40px);

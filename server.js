@@ -9,9 +9,6 @@ const PORT = 3000;
 app.use(express.static("public"));
 
 let board = new Array(100).fill(null);
-
-// This stores extra information for each monster on the board
-// Each cell can have null or an object like { hasMoved: false, placedRound: 1 }
 let monsterInfo = new Array(100).fill(null);
 
 let players = {};
@@ -19,6 +16,7 @@ let playerMonsters = {};
 let nextPlayerNumber = 1;
 
 let roundNumber = 1;
+let winner = null;
 
 io.on("connection", (socket) => {
     console.log("A player connected: " + socket.id);
@@ -34,7 +32,9 @@ io.on("connection", (socket) => {
     players[socket.id] = {
         playerNumber: playerNumber,
         edge: getPlayerEdge(playerNumber),
-        turnEnded: false
+        turnEnded: false,
+        removedCount: 0,
+        eliminated: false
     };
 
     playerMonsters[socket.id] = {
@@ -49,23 +49,28 @@ io.on("connection", (socket) => {
         edge: players[socket.id].edge
     });
 
-    socket.emit("boardUpdate", {
-        board: board,
-        message: "Connected as Player " + playerNumber + "."
-    });
-
     socket.emit("remainingMonstersUpdate", playerMonsters[socket.id]);
 
-    sendRoundUpdate();
+    sendGameUpdate("Connected as Player " + playerNumber + ".");
 
     socket.on("placeMonster", (data) => {
-        const index = data.index;
-        const monster = data.monster;
+        if (winner !== null) {
+            socket.emit("message", "The game has ended. Winner: Player " + winner);
+            return;
+        }
+
+        if (players[socket.id].eliminated) {
+            socket.emit("message", "You are eliminated and cannot place monsters.");
+            return;
+        }
 
         if (players[socket.id].turnEnded) {
             socket.emit("message", "You already ended your turn.");
             return;
         }
+
+        const index = data.index;
+        const monster = data.monster;
 
         if (!isPlayerEdge(index, players[socket.id].playerNumber)) {
             socket.emit("message", "Invalid placement: you can only place monsters on your own edge.");
@@ -84,42 +89,55 @@ io.on("connection", (socket) => {
 
         board[index] = getMonsterLetter(monster);
 
-        // Newly placed monsters cannot move in the same round
         monsterInfo[index] = {
+            ownerSocketId: socket.id,
+            ownerPlayerNumber: playerNumber,
             hasMoved: true,
             placedRound: roundNumber
         };
 
         playerMonsters[socket.id][monster]--;
 
-        io.emit("boardUpdate", {
-            board: board,
-            message: "Player " + playerNumber + " placed a " + getMonsterName(board[index]) + "."
-        });
-
         socket.emit("remainingMonstersUpdate", playerMonsters[socket.id]);
+
+        sendGameUpdate("Player " + playerNumber + " placed a " + getMonsterName(board[index]) + ".");
     });
 
     socket.on("moveMonster", (data) => {
-        const fromIndex = data.fromIndex;
-        const toIndex = data.toIndex;
+        if (winner !== null) {
+            socket.emit("message", "The game has ended. Winner: Player " + winner);
+            return;
+        }
+
+        if (players[socket.id].eliminated) {
+            socket.emit("message", "You are eliminated and cannot move monsters.");
+            return;
+        }
 
         if (players[socket.id].turnEnded) {
             socket.emit("message", "You already ended your turn.");
             return;
         }
 
+        const fromIndex = data.fromIndex;
+        const toIndex = data.toIndex;
+
         if (board[fromIndex] === null) {
             socket.emit("message", "No monster selected.");
             return;
         }
 
-        if (monsterInfo[fromIndex] && monsterInfo[fromIndex].hasMoved) {
+        if (monsterInfo[fromIndex].ownerSocketId !== socket.id) {
+            socket.emit("message", "You can only move your own monsters.");
+            return;
+        }
+
+        if (monsterInfo[fromIndex].hasMoved) {
             socket.emit("message", "This monster has already moved this round.");
             return;
         }
 
-        if (isValidMove(fromIndex, toIndex) === false) {
+        if (!isValidMove(fromIndex, toIndex)) {
             socket.emit("message", "Invalid move: monsters can only move one cell up, down, left, or right.");
             return;
         }
@@ -131,31 +149,26 @@ io.on("connection", (socket) => {
             board[toIndex] = movingMonster;
             board[fromIndex] = null;
 
-            monsterInfo[toIndex] = {
-                hasMoved: true,
-                placedRound: monsterInfo[fromIndex].placedRound
-            };
-
+            monsterInfo[toIndex] = monsterInfo[fromIndex];
+            monsterInfo[toIndex].hasMoved = true;
             monsterInfo[fromIndex] = null;
 
-            io.emit("boardUpdate", {
-                board: board,
-                message: "Player " + playerNumber + " moved a monster."
-            });
+            sendGameUpdate("Player " + playerNumber + " moved a monster.");
         } else {
             const battleMessage = handleBattle(fromIndex, toIndex, movingMonster, targetMonster);
-
-            io.emit("boardUpdate", {
-                board: board,
-                message: battleMessage
-            });
+            checkWinner();
+            sendGameUpdate(battleMessage);
         }
     });
 
     socket.on("endTurn", () => {
-        players[socket.id].turnEnded = true;
+        if (players[socket.id].eliminated) {
+            socket.emit("message", "You are eliminated.");
+            return;
+        }
 
-        io.emit("message", "Player " + playerNumber + " ended their turn.");
+        players[socket.id].turnEnded = true;
+        sendGameUpdate("Player " + playerNumber + " ended their turn.");
 
         checkRoundEnd();
         sendRoundUpdate();
@@ -163,39 +176,97 @@ io.on("connection", (socket) => {
 
     socket.on("disconnect", () => {
         console.log("A player disconnected: " + socket.id);
-
         delete players[socket.id];
         delete playerMonsters[socket.id];
 
         checkRoundEnd();
-        sendRoundUpdate();
+        sendGameUpdate("A player disconnected.");
     });
 });
 
-function checkRoundEnd() {
-    const activePlayers = Object.keys(players);
+function handleBattle(fromIndex, toIndex, movingMonster, targetMonster) {
+    const movingInfo = monsterInfo[fromIndex];
+    const targetInfo = monsterInfo[toIndex];
 
-    if (activePlayers.length === 0) {
-        return;
+    if (movingMonster === targetMonster) {
+        increaseRemovedCount(movingInfo.ownerSocketId);
+        increaseRemovedCount(targetInfo.ownerSocketId);
+
+        board[fromIndex] = null;
+        board[toIndex] = null;
+        monsterInfo[fromIndex] = null;
+        monsterInfo[toIndex] = null;
+
+        return "Battle result: both monsters were removed.";
     }
 
-    const allPlayersEnded = activePlayers.every((socketId) => {
+    if (
+        (movingMonster === "V" && targetMonster === "W") ||
+        (movingMonster === "W" && targetMonster === "G") ||
+        (movingMonster === "G" && targetMonster === "V")
+    ) {
+        increaseRemovedCount(targetInfo.ownerSocketId);
+
+        board[toIndex] = movingMonster;
+        board[fromIndex] = null;
+
+        monsterInfo[toIndex] = movingInfo;
+        monsterInfo[toIndex].hasMoved = true;
+        monsterInfo[fromIndex] = null;
+
+        return "Battle result: " + getMonsterName(movingMonster) + " defeated " + getMonsterName(targetMonster) + ".";
+    }
+
+    increaseRemovedCount(movingInfo.ownerSocketId);
+
+    board[fromIndex] = null;
+    monsterInfo[fromIndex] = null;
+
+    return "Battle result: " + getMonsterName(targetMonster) + " defeated " + getMonsterName(movingMonster) + ".";
+}
+
+function increaseRemovedCount(socketId) {
+    if (!players[socketId]) return;
+
+    players[socketId].removedCount++;
+
+    if (players[socketId].removedCount >= 10) {
+        players[socketId].eliminated = true;
+        players[socketId].turnEnded = true;
+    }
+}
+
+function checkWinner() {
+    const activePlayers = Object.values(players).filter((player) => {
+        return player.eliminated === false;
+    });
+
+    if (activePlayers.length === 1 && Object.keys(players).length > 1) {
+        winner = activePlayers[0].playerNumber;
+    }
+}
+
+function checkRoundEnd() {
+    const activeSocketIds = Object.keys(players).filter((socketId) => {
+        return players[socketId].eliminated === false;
+    });
+
+    if (activeSocketIds.length === 0) return;
+
+    const allEnded = activeSocketIds.every((socketId) => {
         return players[socketId].turnEnded === true;
     });
 
-    if (allPlayersEnded) {
+    if (allEnded) {
         roundNumber++;
 
-        activePlayers.forEach((socketId) => {
+        activeSocketIds.forEach((socketId) => {
             players[socketId].turnEnded = false;
         });
 
         resetMonsterMovement();
 
-        io.emit("boardUpdate", {
-            board: board,
-            message: "Round " + roundNumber + " has started. Monsters can move again."
-        });
+        sendGameUpdate("Round " + roundNumber + " has started. Monsters can move again.");
     }
 }
 
@@ -207,23 +278,47 @@ function resetMonsterMovement() {
     }
 }
 
+function sendGameUpdate(message) {
+    io.emit("boardUpdate", {
+        board: board,
+        message: message,
+        players: getPlayersForClient(),
+        winner: winner
+    });
+
+    sendRoundUpdate();
+}
+
 function sendRoundUpdate() {
-    const activePlayers = Object.keys(players);
+    const activeSocketIds = Object.keys(players).filter((socketId) => {
+        return players[socketId].eliminated === false;
+    });
+
     let endedCount = 0;
 
-    activePlayers.forEach((socketId) => {
+    activeSocketIds.forEach((socketId) => {
         if (players[socketId].turnEnded) {
             endedCount++;
         }
     });
 
-    activePlayers.forEach((socketId) => {
+    Object.keys(players).forEach((socketId) => {
         io.to(socketId).emit("roundUpdate", {
             roundNumber: roundNumber,
             hasEndedTurn: players[socketId].turnEnded,
             endedCount: endedCount,
-            totalPlayers: activePlayers.length
+            totalPlayers: activeSocketIds.length
         });
+    });
+}
+
+function getPlayersForClient() {
+    return Object.values(players).map((player) => {
+        return {
+            playerNumber: player.playerNumber,
+            removedCount: player.removedCount,
+            eliminated: player.eliminated
+        };
     });
 }
 
@@ -249,7 +344,6 @@ function isPlayerEdge(index, playerNumber) {
 function isValidMove(fromIndex, toIndex) {
     const fromRow = Math.floor(fromIndex / 10);
     const fromCol = fromIndex % 10;
-
     const toRow = Math.floor(toIndex / 10);
     const toCol = toIndex % 10;
 
@@ -260,39 +354,6 @@ function isValidMove(fromIndex, toIndex) {
         (rowDifference === 1 && colDifference === 0) ||
         (rowDifference === 0 && colDifference === 1)
     );
-}
-
-function handleBattle(fromIndex, toIndex, movingMonster, targetMonster) {
-    if (movingMonster === targetMonster) {
-        board[fromIndex] = null;
-        board[toIndex] = null;
-        monsterInfo[fromIndex] = null;
-        monsterInfo[toIndex] = null;
-        return "Battle result: both monsters were removed.";
-    }
-
-    if (
-        (movingMonster === "V" && targetMonster === "W") ||
-        (movingMonster === "W" && targetMonster === "G") ||
-        (movingMonster === "G" && targetMonster === "V")
-    ) {
-        board[toIndex] = movingMonster;
-        board[fromIndex] = null;
-
-        monsterInfo[toIndex] = {
-            hasMoved: true,
-            placedRound: monsterInfo[fromIndex].placedRound
-        };
-
-        monsterInfo[fromIndex] = null;
-
-        return "Battle result: " + getMonsterName(movingMonster) + " defeated " + getMonsterName(targetMonster) + ".";
-    }
-
-    board[fromIndex] = null;
-    monsterInfo[fromIndex] = null;
-
-    return "Battle result: " + getMonsterName(targetMonster) + " defeated " + getMonsterName(movingMonster) + ".";
 }
 
 function getMonsterLetter(monster) {
