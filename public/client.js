@@ -1,7 +1,14 @@
 const socket = io();
 
+const joinScreen = document.getElementById("joinScreen");
+const gameScreen = document.getElementById("gameScreen");
+const roomNameInput = document.getElementById("roomNameInput");
+const joinRoomButton = document.getElementById("joinRoomButton");
+const joinMessageText = document.getElementById("joinMessageText");
+
 const connectionMessage = document.getElementById("connectionMessage");
 const socketIdText = document.getElementById("socketId");
+const roomNameText = document.getElementById("roomNameText");
 const gameBoard = document.getElementById("gameBoard");
 
 const playerInfoText = document.getElementById("playerInfoText");
@@ -33,10 +40,27 @@ let board = new Array(100).fill(null);
 let playerNumber = null;
 let playerEdge = null;
 let hasEndedTurn = false;
+let currentRoomName = null;
+
+joinRoomButton.addEventListener("click", () => {
+    const roomName = roomNameInput.value.trim();
+
+    if (roomName === "") {
+        joinMessageText.textContent = "Please enter a room name.";
+        return;
+    }
+
+    currentRoomName = roomName;
+    socket.emit("joinRoom", roomName);
+});
 
 socket.on("playerConnected", (data) => {
+    joinScreen.classList.add("hidden");
+    gameScreen.classList.remove("hidden");
+
     connectionMessage.textContent = "Player connected successfully!";
     socketIdText.textContent = data.socketId;
+    roomNameText.textContent = data.roomName;
 
     playerNumber = data.playerNumber;
     playerEdge = data.edge;
@@ -44,7 +68,7 @@ socket.on("playerConnected", (data) => {
     playerInfoText.textContent = "Player: " + playerNumber;
     playerEdgeText.textContent = "Your edge: " + playerEdge;
 
-    updateBoard();
+    createBoard();
 });
 
 socket.on("boardUpdate", (data) => {
@@ -92,6 +116,7 @@ socket.on("remainingMonstersUpdate", (remainingMonsters) => {
 });
 
 socket.on("message", (message) => {
+    joinMessageText.textContent = message;
     messageText.textContent = message;
 });
 
@@ -264,5 +289,3 @@ function getMonsterName(monsterLetter) {
     if (monsterLetter === "G") return "Ghost";
     return "Unknown";
 }
-
-createBoard();

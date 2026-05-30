@@ -6,10 +6,27 @@
 </head>
 <body>
 
-    <div class="container">
+    <div id="joinScreen" class="container">
+        <h1>Monster Mayhem</h1>
+
+        <h2>Join a Game Room</h2>
+
+        <input id="roomNameInput" type="text" placeholder="Enter room name">
+
+        <br>
+
+        <button id="joinRoomButton">Join Room</button>
+
+        <p id="joinMessageText">Enter a room name to start playing.</p>
+    </div>
+
+    <div id="gameScreen" class="container hidden">
         <h1>Monster Mayhem</h1>
 
         <p id="connectionMessage">Connecting to server...</p>
+
+        <p>Room:</p>
+        <p id="roomNameText">Waiting...</p>
 
         <p>Your Socket ID:</p>
         <p id="socketId">Waiting for ID...</p>

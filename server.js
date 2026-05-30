@@ -8,348 +8,347 @@ const PORT = 3000;
 
 app.use(express.static("public"));
 
-let board = new Array(100).fill(null);
-let monsterInfo = new Array(100).fill(null);
+// All game rooms are stored here
+let rooms = {};
 
-let players = {};
-let playerMonsters = {};
-let nextPlayerNumber = 1;
+// Create a new room if it does not exist
+function createRoom(roomName) {
+    if (!rooms[roomName]) {
+        rooms[roomName] = {
+            board: new Array(100).fill(null),
+            monsterInfo: new Array(100).fill(null),
+            players: {},
+            playerMonsters: {},
+            nextPlayerNumber: 1,
+            roundNumber: 1,
+            winner: null,
+            statistics: {
+                totalGamesPlayed: 0,
+                playerStats: {}
+            }
+        };
+    }
 
-let roundNumber = 1;
-let winner = null;
-
-// Global statistics stored on the server
-let statistics = {
-    totalGamesPlayed: 0,
-    playerStats: {}
-};
+    return rooms[roomName];
+}
 
 io.on("connection", (socket) => {
     console.log("A player connected: " + socket.id);
 
-    if (nextPlayerNumber > 4) {
-        socket.emit("message", "Game is full. Maximum 4 players allowed.");
-        return;
-    }
+    socket.on("joinRoom", (roomName) => {
+        const room = createRoom(roomName);
 
-    const playerNumber = nextPlayerNumber;
-    nextPlayerNumber++;
+        if (room.nextPlayerNumber > 4) {
+            socket.emit("message", "This room is full. Maximum 4 players allowed.");
+            return;
+        }
 
-    players[socket.id] = {
-        playerNumber: playerNumber,
-        edge: getPlayerEdge(playerNumber),
-        turnEnded: false,
-        removedCount: 0,
-        eliminated: false
-    };
+        socket.join(roomName);
+        socket.roomName = roomName;
 
-    playerMonsters[socket.id] = {
-        vampire: 1,
-        werewolf: 1,
-        ghost: 1
-    };
+        const playerNumber = room.nextPlayerNumber;
+        room.nextPlayerNumber++;
 
-    // Create statistics for this player
-    statistics.playerStats[playerNumber] = {
-        wins: 0,
-        losses: 0
-    };
+        room.players[socket.id] = {
+            playerNumber: playerNumber,
+            edge: getPlayerEdge(playerNumber),
+            turnEnded: false,
+            removedCount: 0,
+            eliminated: false
+        };
 
-    socket.emit("playerConnected", {
-        socketId: socket.id,
-        playerNumber: playerNumber,
-        edge: players[socket.id].edge
+        room.playerMonsters[socket.id] = {
+            vampire: 1,
+            werewolf: 1,
+            ghost: 1
+        };
+
+        room.statistics.playerStats[playerNumber] = {
+            wins: 0,
+            losses: 0
+        };
+
+        socket.emit("playerConnected", {
+            socketId: socket.id,
+            playerNumber: playerNumber,
+            edge: room.players[socket.id].edge,
+            roomName: roomName
+        });
+
+        socket.emit("remainingMonstersUpdate", room.playerMonsters[socket.id]);
+
+        sendGameUpdate(roomName, "Player " + playerNumber + " joined room " + roomName + ".");
     });
 
-    socket.emit("remainingMonstersUpdate", playerMonsters[socket.id]);
-
-    sendGameUpdate("Connected as Player " + playerNumber + ".");
-
     socket.on("placeMonster", (data) => {
-        if (winner !== null) {
-            socket.emit("message", "The game has ended. Winner: Player " + winner);
-            return;
-        }
+        const room = rooms[socket.roomName];
+        if (!room) return;
 
-        if (players[socket.id].eliminated) {
-            socket.emit("message", "You are eliminated and cannot place monsters.");
-            return;
-        }
+        const player = room.players[socket.id];
 
-        if (players[socket.id].turnEnded) {
-            socket.emit("message", "You already ended your turn.");
-            return;
-        }
+        if (room.winner !== null) return socket.emit("message", "The game has ended.");
+        if (player.eliminated) return socket.emit("message", "You are eliminated.");
+        if (player.turnEnded) return socket.emit("message", "You already ended your turn.");
 
         const index = data.index;
         const monster = data.monster;
 
-        if (!isPlayerEdge(index, players[socket.id].playerNumber)) {
-            socket.emit("message", "Invalid placement: you can only place monsters on your own edge.");
-            return;
+        if (!isPlayerEdge(index, player.playerNumber)) {
+            return socket.emit("message", "Invalid placement: use your own edge.");
         }
 
-        if (board[index] !== null) {
-            socket.emit("message", "This cell already has a monster.");
-            return;
+        if (room.board[index] !== null) {
+            return socket.emit("message", "This cell already has a monster.");
         }
 
-        if (playerMonsters[socket.id][monster] <= 0) {
-            socket.emit("message", "You have already placed this monster type.");
-            return;
+        if (room.playerMonsters[socket.id][monster] <= 0) {
+            return socket.emit("message", "You have already placed this monster type.");
         }
 
-        board[index] = getMonsterLetter(monster);
+        room.board[index] = getMonsterLetter(monster);
 
-        monsterInfo[index] = {
+        room.monsterInfo[index] = {
             ownerSocketId: socket.id,
-            ownerPlayerNumber: playerNumber,
+            ownerPlayerNumber: player.playerNumber,
             hasMoved: true,
-            placedRound: roundNumber
+            placedRound: room.roundNumber
         };
 
-        playerMonsters[socket.id][monster]--;
+        room.playerMonsters[socket.id][monster]--;
 
-        socket.emit("remainingMonstersUpdate", playerMonsters[socket.id]);
+        socket.emit("remainingMonstersUpdate", room.playerMonsters[socket.id]);
 
-        sendGameUpdate("Player " + playerNumber + " placed a " + getMonsterName(board[index]) + ".");
+        sendGameUpdate(socket.roomName, "Player " + player.playerNumber + " placed a monster.");
     });
 
     socket.on("moveMonster", (data) => {
-        if (winner !== null) {
-            socket.emit("message", "The game has ended. Winner: Player " + winner);
-            return;
-        }
+        const room = rooms[socket.roomName];
+        if (!room) return;
 
-        if (players[socket.id].eliminated) {
-            socket.emit("message", "You are eliminated and cannot move monsters.");
-            return;
-        }
+        const player = room.players[socket.id];
 
-        if (players[socket.id].turnEnded) {
-            socket.emit("message", "You already ended your turn.");
-            return;
-        }
+        if (room.winner !== null) return socket.emit("message", "The game has ended.");
+        if (player.eliminated) return socket.emit("message", "You are eliminated.");
+        if (player.turnEnded) return socket.emit("message", "You already ended your turn.");
 
         const fromIndex = data.fromIndex;
         const toIndex = data.toIndex;
 
-        if (board[fromIndex] === null) {
-            socket.emit("message", "No monster selected.");
-            return;
+        if (room.board[fromIndex] === null) return socket.emit("message", "No monster selected.");
+
+        if (room.monsterInfo[fromIndex].ownerSocketId !== socket.id) {
+            return socket.emit("message", "You can only move your own monsters.");
         }
 
-        if (monsterInfo[fromIndex].ownerSocketId !== socket.id) {
-            socket.emit("message", "You can only move your own monsters.");
-            return;
-        }
-
-        if (monsterInfo[fromIndex].hasMoved) {
-            socket.emit("message", "This monster has already moved this round.");
-            return;
+        if (room.monsterInfo[fromIndex].hasMoved) {
+            return socket.emit("message", "This monster has already moved this round.");
         }
 
         if (!isValidMove(fromIndex, toIndex)) {
-            socket.emit("message", "Invalid move: monsters can only move one cell up, down, left, or right.");
-            return;
+            return socket.emit("message", "Invalid move: move one cell up, down, left, or right.");
         }
 
-        const movingMonster = board[fromIndex];
-        const targetMonster = board[toIndex];
+        const movingMonster = room.board[fromIndex];
+        const targetMonster = room.board[toIndex];
 
         if (targetMonster === null) {
-            board[toIndex] = movingMonster;
-            board[fromIndex] = null;
+            room.board[toIndex] = movingMonster;
+            room.board[fromIndex] = null;
 
-            monsterInfo[toIndex] = monsterInfo[fromIndex];
-            monsterInfo[toIndex].hasMoved = true;
-            monsterInfo[fromIndex] = null;
+            room.monsterInfo[toIndex] = room.monsterInfo[fromIndex];
+            room.monsterInfo[toIndex].hasMoved = true;
+            room.monsterInfo[fromIndex] = null;
 
-            sendGameUpdate("Player " + playerNumber + " moved a monster.");
+            sendGameUpdate(socket.roomName, "Player " + player.playerNumber + " moved a monster.");
         } else {
-            const battleMessage = handleBattle(fromIndex, toIndex, movingMonster, targetMonster);
-            checkWinner();
-            sendGameUpdate(battleMessage);
+            const battleMessage = handleBattle(room, fromIndex, toIndex, movingMonster, targetMonster);
+            checkWinner(room);
+            sendGameUpdate(socket.roomName, battleMessage);
         }
     });
 
     socket.on("endTurn", () => {
-        if (players[socket.id].eliminated) {
-            socket.emit("message", "You are eliminated.");
-            return;
-        }
+        const room = rooms[socket.roomName];
+        if (!room) return;
 
-        players[socket.id].turnEnded = true;
-        sendGameUpdate("Player " + playerNumber + " ended their turn.");
+        const player = room.players[socket.id];
 
-        checkRoundEnd();
-        sendRoundUpdate();
+        if (player.eliminated) return socket.emit("message", "You are eliminated.");
+
+        player.turnEnded = true;
+
+        sendGameUpdate(socket.roomName, "Player " + player.playerNumber + " ended their turn.");
+        checkRoundEnd(room, socket.roomName);
+        sendRoundUpdate(socket.roomName);
     });
 
     socket.on("disconnect", () => {
+        const roomName = socket.roomName;
+        const room = rooms[roomName];
+
+        if (room) {
+            delete room.players[socket.id];
+            delete room.playerMonsters[socket.id];
+
+            sendGameUpdate(roomName, "A player disconnected.");
+            checkRoundEnd(room, roomName);
+        }
+
         console.log("A player disconnected: " + socket.id);
-
-        delete players[socket.id];
-        delete playerMonsters[socket.id];
-
-        checkRoundEnd();
-        sendGameUpdate("A player disconnected.");
     });
 });
 
-function handleBattle(fromIndex, toIndex, movingMonster, targetMonster) {
-    const movingInfo = monsterInfo[fromIndex];
-    const targetInfo = monsterInfo[toIndex];
+function handleBattle(room, fromIndex, toIndex, movingMonster, targetMonster) {
+    const movingInfo = room.monsterInfo[fromIndex];
+    const targetInfo = room.monsterInfo[toIndex];
 
     if (movingMonster === targetMonster) {
-        increaseRemovedCount(movingInfo.ownerSocketId);
-        increaseRemovedCount(targetInfo.ownerSocketId);
+        increaseRemovedCount(room, movingInfo.ownerSocketId);
+        increaseRemovedCount(room, targetInfo.ownerSocketId);
 
-        board[fromIndex] = null;
-        board[toIndex] = null;
-        monsterInfo[fromIndex] = null;
-        monsterInfo[toIndex] = null;
+        room.board[fromIndex] = null;
+        room.board[toIndex] = null;
+        room.monsterInfo[fromIndex] = null;
+        room.monsterInfo[toIndex] = null;
 
         return "Battle result: both monsters were removed.";
     }
 
-    if (
+    const movingWins =
         (movingMonster === "V" && targetMonster === "W") ||
         (movingMonster === "W" && targetMonster === "G") ||
-        (movingMonster === "G" && targetMonster === "V")
-    ) {
-        increaseRemovedCount(targetInfo.ownerSocketId);
+        (movingMonster === "G" && targetMonster === "V");
 
-        board[toIndex] = movingMonster;
-        board[fromIndex] = null;
+    if (movingWins) {
+        increaseRemovedCount(room, targetInfo.ownerSocketId);
 
-        monsterInfo[toIndex] = movingInfo;
-        monsterInfo[toIndex].hasMoved = true;
-        monsterInfo[fromIndex] = null;
+        room.board[toIndex] = movingMonster;
+        room.board[fromIndex] = null;
+
+        room.monsterInfo[toIndex] = movingInfo;
+        room.monsterInfo[toIndex].hasMoved = true;
+        room.monsterInfo[fromIndex] = null;
 
         return "Battle result: " + getMonsterName(movingMonster) + " defeated " + getMonsterName(targetMonster) + ".";
     }
 
-    increaseRemovedCount(movingInfo.ownerSocketId);
+    increaseRemovedCount(room, movingInfo.ownerSocketId);
 
-    board[fromIndex] = null;
-    monsterInfo[fromIndex] = null;
+    room.board[fromIndex] = null;
+    room.monsterInfo[fromIndex] = null;
 
     return "Battle result: " + getMonsterName(targetMonster) + " defeated " + getMonsterName(movingMonster) + ".";
 }
 
-function increaseRemovedCount(socketId) {
-    if (!players[socketId]) return;
+function increaseRemovedCount(room, socketId) {
+    if (!room.players[socketId]) return;
 
-    players[socketId].removedCount++;
+    room.players[socketId].removedCount++;
 
-    if (players[socketId].removedCount >= 10) {
-        players[socketId].eliminated = true;
-        players[socketId].turnEnded = true;
+    if (room.players[socketId].removedCount >= 10) {
+        room.players[socketId].eliminated = true;
+        room.players[socketId].turnEnded = true;
     }
 }
 
-function checkWinner() {
-    const activePlayers = Object.values(players).filter((player) => {
+function checkWinner(room) {
+    const activePlayers = Object.values(room.players).filter((player) => {
         return player.eliminated === false;
     });
 
-    if (activePlayers.length === 1 && Object.keys(players).length > 1 && winner === null) {
-        winner = activePlayers[0].playerNumber;
-        updateStatistics(winner);
+    if (activePlayers.length === 1 && Object.keys(room.players).length > 1 && room.winner === null) {
+        room.winner = activePlayers[0].playerNumber;
+        updateStatistics(room, room.winner);
     }
 }
 
-function updateStatistics(winningPlayerNumber) {
-    statistics.totalGamesPlayed++;
+function updateStatistics(room, winningPlayerNumber) {
+    room.statistics.totalGamesPlayed++;
 
-    Object.values(players).forEach((player) => {
+    Object.values(room.players).forEach((player) => {
         const number = player.playerNumber;
 
-        if (!statistics.playerStats[number]) {
-            statistics.playerStats[number] = {
-                wins: 0,
-                losses: 0
-            };
-        }
-
         if (number === winningPlayerNumber) {
-            statistics.playerStats[number].wins++;
+            room.statistics.playerStats[number].wins++;
         } else {
-            statistics.playerStats[number].losses++;
+            room.statistics.playerStats[number].losses++;
         }
     });
 }
 
-function checkRoundEnd() {
-    const activeSocketIds = Object.keys(players).filter((socketId) => {
-        return players[socketId].eliminated === false;
+function checkRoundEnd(room, roomName) {
+    const activeSocketIds = Object.keys(room.players).filter((socketId) => {
+        return room.players[socketId].eliminated === false;
     });
 
     if (activeSocketIds.length === 0) return;
 
     const allEnded = activeSocketIds.every((socketId) => {
-        return players[socketId].turnEnded === true;
+        return room.players[socketId].turnEnded === true;
     });
 
     if (allEnded) {
-        roundNumber++;
+        room.roundNumber++;
 
         activeSocketIds.forEach((socketId) => {
-            players[socketId].turnEnded = false;
+            room.players[socketId].turnEnded = false;
         });
 
-        resetMonsterMovement();
+        resetMonsterMovement(room);
 
-        sendGameUpdate("Round " + roundNumber + " has started. Monsters can move again.");
+        sendGameUpdate(roomName, "Round " + room.roundNumber + " has started.");
     }
 }
 
-function resetMonsterMovement() {
-    for (let i = 0; i < monsterInfo.length; i++) {
-        if (monsterInfo[i] !== null) {
-            monsterInfo[i].hasMoved = false;
+function resetMonsterMovement(room) {
+    for (let i = 0; i < room.monsterInfo.length; i++) {
+        if (room.monsterInfo[i] !== null) {
+            room.monsterInfo[i].hasMoved = false;
         }
     }
 }
 
-function sendGameUpdate(message) {
-    io.emit("boardUpdate", {
-        board: board,
+function sendGameUpdate(roomName, message) {
+    const room = rooms[roomName];
+
+    io.to(roomName).emit("boardUpdate", {
+        board: room.board,
         message: message,
-        players: getPlayersForClient(),
-        winner: winner,
-        statistics: statistics
+        players: getPlayersForClient(room),
+        winner: room.winner,
+        statistics: room.statistics
     });
 
-    sendRoundUpdate();
+    sendRoundUpdate(roomName);
 }
 
-function sendRoundUpdate() {
-    const activeSocketIds = Object.keys(players).filter((socketId) => {
-        return players[socketId].eliminated === false;
+function sendRoundUpdate(roomName) {
+    const room = rooms[roomName];
+
+    const activeSocketIds = Object.keys(room.players).filter((socketId) => {
+        return room.players[socketId].eliminated === false;
     });
 
     let endedCount = 0;
 
     activeSocketIds.forEach((socketId) => {
-        if (players[socketId].turnEnded) {
+        if (room.players[socketId].turnEnded) {
             endedCount++;
         }
     });
 
-    Object.keys(players).forEach((socketId) => {
+    Object.keys(room.players).forEach((socketId) => {
         io.to(socketId).emit("roundUpdate", {
-            roundNumber: roundNumber,
-            hasEndedTurn: players[socketId].turnEnded,
+            roundNumber: room.roundNumber,
+            hasEndedTurn: room.players[socketId].turnEnded,
             endedCount: endedCount,
             totalPlayers: activeSocketIds.length
         });
     });
 }
 
-function getPlayersForClient() {
-    return Object.values(players).map((player) => {
+function getPlayersForClient(room) {
+    return Object.values(room.players).map((player) => {
         return {
             playerNumber: player.playerNumber,
             removedCount: player.removedCount,
