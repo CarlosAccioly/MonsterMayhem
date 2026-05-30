@@ -10,11 +10,14 @@ app.use(express.static("public"));
 
 let board = new Array(100).fill(null);
 
+// This stores extra information for each monster on the board
+// Each cell can have null or an object like { hasMoved: false, placedRound: 1 }
+let monsterInfo = new Array(100).fill(null);
+
 let players = {};
 let playerMonsters = {};
 let nextPlayerNumber = 1;
 
-// Round system
 let roundNumber = 1;
 
 io.on("connection", (socket) => {
@@ -80,6 +83,13 @@ io.on("connection", (socket) => {
         }
 
         board[index] = getMonsterLetter(monster);
+
+        // Newly placed monsters cannot move in the same round
+        monsterInfo[index] = {
+            hasMoved: true,
+            placedRound: roundNumber
+        };
+
         playerMonsters[socket.id][monster]--;
 
         io.emit("boardUpdate", {
@@ -99,6 +109,16 @@ io.on("connection", (socket) => {
             return;
         }
 
+        if (board[fromIndex] === null) {
+            socket.emit("message", "No monster selected.");
+            return;
+        }
+
+        if (monsterInfo[fromIndex] && monsterInfo[fromIndex].hasMoved) {
+            socket.emit("message", "This monster has already moved this round.");
+            return;
+        }
+
         if (isValidMove(fromIndex, toIndex) === false) {
             socket.emit("message", "Invalid move: monsters can only move one cell up, down, left, or right.");
             return;
@@ -107,14 +127,16 @@ io.on("connection", (socket) => {
         const movingMonster = board[fromIndex];
         const targetMonster = board[toIndex];
 
-        if (movingMonster === null) {
-            socket.emit("message", "No monster selected.");
-            return;
-        }
-
         if (targetMonster === null) {
             board[toIndex] = movingMonster;
             board[fromIndex] = null;
+
+            monsterInfo[toIndex] = {
+                hasMoved: true,
+                placedRound: monsterInfo[fromIndex].placedRound
+            };
+
+            monsterInfo[fromIndex] = null;
 
             io.emit("boardUpdate", {
                 board: board,
@@ -168,10 +190,20 @@ function checkRoundEnd() {
             players[socketId].turnEnded = false;
         });
 
+        resetMonsterMovement();
+
         io.emit("boardUpdate", {
             board: board,
-            message: "Round " + roundNumber + " has started."
+            message: "Round " + roundNumber + " has started. Monsters can move again."
         });
+    }
+}
+
+function resetMonsterMovement() {
+    for (let i = 0; i < monsterInfo.length; i++) {
+        if (monsterInfo[i] !== null) {
+            monsterInfo[i].hasMoved = false;
+        }
     }
 }
 
@@ -234,6 +266,8 @@ function handleBattle(fromIndex, toIndex, movingMonster, targetMonster) {
     if (movingMonster === targetMonster) {
         board[fromIndex] = null;
         board[toIndex] = null;
+        monsterInfo[fromIndex] = null;
+        monsterInfo[toIndex] = null;
         return "Battle result: both monsters were removed.";
     }
 
@@ -244,10 +278,20 @@ function handleBattle(fromIndex, toIndex, movingMonster, targetMonster) {
     ) {
         board[toIndex] = movingMonster;
         board[fromIndex] = null;
+
+        monsterInfo[toIndex] = {
+            hasMoved: true,
+            placedRound: monsterInfo[fromIndex].placedRound
+        };
+
+        monsterInfo[fromIndex] = null;
+
         return "Battle result: " + getMonsterName(movingMonster) + " defeated " + getMonsterName(targetMonster) + ".";
     }
 
     board[fromIndex] = null;
+    monsterInfo[fromIndex] = null;
+
     return "Battle result: " + getMonsterName(targetMonster) + " defeated " + getMonsterName(movingMonster) + ".";
 }
 
