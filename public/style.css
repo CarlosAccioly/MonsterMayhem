@@ -76,14 +76,16 @@ h1 {
     color: #ffcc00;
 }
 
-#playersStatusBox {
+#playersStatusBox,
+#statisticsBox {
     background-color: #222;
     border: 1px solid #777;
     padding: 10px;
     border-radius: 5px;
 }
 
-.player-status {
+.player-status,
+.stat-line {
     margin: 5px;
     font-weight: bold;
 }
@@ -94,6 +96,10 @@ h1 {
 
 .eliminated-player {
     color: #ff6666;
+}
+
+.stat-line {
+    color: #ffcc00;
 }
 
 #gameBoard {

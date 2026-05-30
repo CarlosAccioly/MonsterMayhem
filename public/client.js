@@ -7,6 +7,8 @@ const gameBoard = document.getElementById("gameBoard");
 const playerInfoText = document.getElementById("playerInfoText");
 const playerEdgeText = document.getElementById("playerEdgeText");
 
+const statisticsBox = document.getElementById("statisticsBox");
+
 const roundText = document.getElementById("roundText");
 const turnStatusText = document.getElementById("turnStatusText");
 const endedPlayersText = document.getElementById("endedPlayersText");
@@ -54,6 +56,10 @@ socket.on("boardUpdate", (data) => {
 
     if (data.players) {
         updatePlayersStatus(data.players);
+    }
+
+    if (data.statistics) {
+        updateStatistics(data.statistics);
     }
 
     if (data.winner !== null) {
@@ -132,6 +138,11 @@ function handleCellClick(index) {
         return;
     }
 
+    if (winnerText.textContent !== "") {
+        messageText.textContent = "The game is over.";
+        return;
+    }
+
     if (board[index] !== null && selectedMoveIndex === null) {
         selectedMoveIndex = index;
         selectedMoveText.textContent = "Selected monster to move: " + getMonsterName(board[index]);
@@ -204,6 +215,28 @@ function updatePlayersStatus(players) {
 
         playersStatusBox.appendChild(playerLine);
     });
+}
+
+function updateStatistics(statistics) {
+    statisticsBox.innerHTML = "";
+
+    const totalLine = document.createElement("p");
+    totalLine.classList.add("stat-line");
+    totalLine.textContent = "Total games played: " + statistics.totalGamesPlayed;
+    statisticsBox.appendChild(totalLine);
+
+    for (const playerNumber in statistics.playerStats) {
+        const playerStats = statistics.playerStats[playerNumber];
+
+        const line = document.createElement("p");
+        line.classList.add("stat-line");
+        line.textContent =
+            "Player " + playerNumber +
+            " | Wins: " + playerStats.wins +
+            " | Losses: " + playerStats.losses;
+
+        statisticsBox.appendChild(line);
+    }
 }
 
 function isMyEdge(index) {

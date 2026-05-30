@@ -18,6 +18,12 @@ let nextPlayerNumber = 1;
 let roundNumber = 1;
 let winner = null;
 
+// Global statistics stored on the server
+let statistics = {
+    totalGamesPlayed: 0,
+    playerStats: {}
+};
+
 io.on("connection", (socket) => {
     console.log("A player connected: " + socket.id);
 
@@ -41,6 +47,12 @@ io.on("connection", (socket) => {
         vampire: 1,
         werewolf: 1,
         ghost: 1
+    };
+
+    // Create statistics for this player
+    statistics.playerStats[playerNumber] = {
+        wins: 0,
+        losses: 0
     };
 
     socket.emit("playerConnected", {
@@ -176,6 +188,7 @@ io.on("connection", (socket) => {
 
     socket.on("disconnect", () => {
         console.log("A player disconnected: " + socket.id);
+
         delete players[socket.id];
         delete playerMonsters[socket.id];
 
@@ -241,9 +254,31 @@ function checkWinner() {
         return player.eliminated === false;
     });
 
-    if (activePlayers.length === 1 && Object.keys(players).length > 1) {
+    if (activePlayers.length === 1 && Object.keys(players).length > 1 && winner === null) {
         winner = activePlayers[0].playerNumber;
+        updateStatistics(winner);
     }
+}
+
+function updateStatistics(winningPlayerNumber) {
+    statistics.totalGamesPlayed++;
+
+    Object.values(players).forEach((player) => {
+        const number = player.playerNumber;
+
+        if (!statistics.playerStats[number]) {
+            statistics.playerStats[number] = {
+                wins: 0,
+                losses: 0
+            };
+        }
+
+        if (number === winningPlayerNumber) {
+            statistics.playerStats[number].wins++;
+        } else {
+            statistics.playerStats[number].losses++;
+        }
+    });
 }
 
 function checkRoundEnd() {
@@ -283,7 +318,8 @@ function sendGameUpdate(message) {
         board: board,
         message: message,
         players: getPlayersForClient(),
-        winner: winner
+        winner: winner,
+        statistics: statistics
     });
 
     sendRoundUpdate();
